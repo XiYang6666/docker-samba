@@ -35,6 +35,7 @@ ___
 * [Notes](#notes)
   * [Variable interpolation](#variable-interpolation)
   * [Status](#status)
+  * [Service discovery for Linux and macOS](#service-discovery-for-linux-and-macos)
   * [Service discovery for Windows](#service-discovery-for-windows)
 * [Upgrade](#upgrade)
 * [Contributing](#contributing)
@@ -46,6 +47,7 @@ ___
 * Easy [configuration](#configuration) through YAML
 * Improve [operability with Mac OS X clients](https://wiki.samba.org/index.php/Configure_Samba_to_Work_Better_with_Mac_OS_X)
 * Drop support for legacy protocols including NetBIOS, WINS, and Samba port 139
+* [Service discovery for Linux and macOS](#service-discovery-for-linux-and-macos) supported using [Avahi](https://www.avahi.org/)
 * [Service discovery for Windows](#service-discovery-for-windows) supported using [WSDD2](https://github.com/Netgear/wsdd2)
 
 ## Build locally
@@ -63,10 +65,10 @@ docker buildx bake image-all
 
 ## Image
 
-| Registry                                                                                         | Image                           |
-|--------------------------------------------------------------------------------------------------|---------------------------------|
-| [Docker Hub](https://hub.docker.com/r/crazymax/samba/)                                           | `crazymax/samba`                |
-| [GitHub Container Registry](https://github.com/users/crazy-max/packages/container/package/samba) | `ghcr.io/crazy-max/samba`       |
+| Registry                                                                                         | Image                     |
+| ------------------------------------------------------------------------------------------------ | ------------------------- |
+| [Docker Hub](https://hub.docker.com/r/crazymax/samba/)                                           | `crazymax/samba`          |
+| [GitHub Container Registry](https://github.com/users/crazy-max/packages/container/package/samba) | `ghcr.io/crazy-max/samba` |
 
 Following platforms for this image are available:
 
@@ -95,12 +97,17 @@ linux/s390x
 * `SAMBA_WIDE_LINKS`: Controls whether or not links in the UNIX file system may be followed by the server. (default `yes`)
 * `SAMBA_HOSTS_ALLOW`: Set of hosts which are permitted to access a service. (default `127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16`)
 * `SAMBA_INTERFACES`: Allows you to override the default network interfaces list.
+* `AVAHI_ENABLE`: Enable [service discovery for Linux and macOS](#service-discovery-for-linux-and-macos) (default `0`)
+* `AVAHI_INTERFACES`: Comma-separated network interfaces Avahi is allowed to use
+* `AVAHI_MODEL`: Finder device model advertised through Avahi (default `RackMac`)
+* `AVAHI_ADISK_NAME`: Time Machine share name advertised through `_adisk._tcp` (disabled by default)
 * `WSDD2_ENABLE`: Enable [service discovery for Windows](#service-discovery-for-windows) (default `0`)
 * `WSDD2_HOSTNAME`: Override hostname (default to host or container name)
 * `WSDD2_NETBIOS_NAME`: Set NetBIOS name (default to hostname)
 * `WSDD2_INTERFACE`: Reply only on this interface
 
-> More info: https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html
+> [!NOTE]
+> https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html
 
 ## Volumes
 
@@ -109,10 +116,12 @@ linux/s390x
 ## Ports
 
 * `445`: SMB over TCP port
+* `5353`: mDNS UDP port
 * `3702`: WS-Discovery TCP/UDP port
 * `5355`: LLMNR TCP/UDP port
 
-> More info: https://wiki.samba.org/index.php/Samba_NT4_PDC_Port_Usage
+> [!NOTE]
+> https://wiki.samba.org/index.php/Samba_NT4_PDC_Port_Usage
 
 ## Configuration
 
@@ -166,7 +175,8 @@ visible or accessible:
 /._*/.apdisk/.AppleDouble/.DS_Store/.TemporaryItems/.Trashes/desktop.ini/ehthumbs.db/Network Trash Folder/Temporary Items/Thumbs.db/
 ```
 
-> More info: https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#VETOFILES
+> [!NOTE]
+> https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#VETOFILES
 
 ### `hidefiles`
 
@@ -178,14 +188,22 @@ visible or accessible:
 
 In this example, all files and directories beginning with an underscore (`_`) will be hidden.
 
-> More info: https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#HIDEFILES
+> [!NOTE]
+> https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#HIDEFILES
 
 ### `recycle`
 
-`recycle: yes` this option enables `vfs_recycle` module.
-The `vfs_recycle` intercepts file deletion requests and moves the affected files to a temporary repository rather than deleting them immediately. This gives the same effect as the Recycle Bin on Windows computers.
+`recycle: yes` enables the `vfs_recycle` module. Any other value, including
+`no`, leaves recycle disabled.
 
-> More info: https://www.samba.org/samba/docs/current/man-html/vfs_recycle.8.html
+The `vfs_recycle` intercepts file deletion requests and moves the affected
+files to a temporary repository rather than deleting them immediately. This
+gives the same effect as the Recycle Bin on Windows computers. On this image it
+is stacked with the default `fruit` and `streams_xattr` VFS modules so macOS
+shares keep a consistent VFS configuration.
+
+> [!NOTE]
+> https://www.samba.org/samba/docs/current/man-html/vfs_recycle.8.html
 
 ## Usage
 
@@ -209,6 +227,10 @@ docker run -d --network host \
   -v "$(pwd)/data:/data" \
   --name samba crazymax/samba
 ```
+
+### Helm
+
+If you want to deploy this Container in your Kubernetes Cluster you can you this Helm Chart: https://github.com/tzabbi/crazy-max-samba-helm
 
 ## Upgrade
 
@@ -270,6 +292,30 @@ Use the following commands to check the logs and status:
 docker compose logs samba
 docker compose exec samba smbstatus
 ```
+
+### Service discovery for Linux and macOS
+
+Zeroconf service discovery for Linux and macOS clients can be enabled by
+setting `AVAHI_ENABLE` to `1`. It publishes the `_smb._tcp` service on port
+`445` and a `_device-info._tcp` record for Finder using [Avahi](https://www.avahi.org/).
+
+If you use Samba as a Time Machine target, set `AVAHI_ADISK_NAME` to the
+matching share name to publish an `_adisk._tcp` record. No `_adisk._tcp` record
+is published by default because advertising a non-existent Time Machine share
+breaks client expectations.
+
+mDNS uses multicast UDP port `5353`, so the container must use host networking
+on a Linux host. Docker Desktop host networking on macOS and Windows does not
+provide LAN-visible multicast discovery for this use case.
+
+The advertised name follows the container hostname. Set `hostname` in your
+compose file to control the `.local` name.
+
+Avahi listens on every interface by default. Set `AVAHI_INTERFACES`, for
+example `eth0`, to avoid advertising on Docker bridge, loopback, or veth
+interfaces.
+
+See [examples/zeroconf](examples/zeroconf) as an example.
 
 ### Service discovery for Windows
 

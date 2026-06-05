@@ -140,7 +140,7 @@ if [[ "$(yq --output-format=json e '(.. | select(tag == "!!str")) |= envsubst' "
         addgroup "$(_jq '.user')" "$group_name"
       done
     fi
-    echo -e "$password\n$password" | smbpasswd -a -s "$(_jq '.user')"
+    printf '%s\n%s\n' "$password" "$password" | smbpasswd -a -s "$(_jq '.user')"
     unset password
   done
 fi
@@ -164,7 +164,7 @@ if [[ "$(yq --output-format=json e '(.. | select(tag == "!!str")) |= envsubst' "
       >&2 echo "ERROR: Name required"
       exit 1
     fi
-    echo -e "\n[$(_jq '.name')]" >> /etc/samba/smb.conf
+    printf '\n[%s]\n' "$(_jq '.name')" >> /etc/samba/smb.conf
     if [[ "$(_jq '.path')" = "null" ]] || [[ -z "$(_jq '.path')" ]]; then
       >&2 echo "ERROR: Path required"
       exit 1
@@ -204,8 +204,8 @@ if [[ "$(yq --output-format=json e '(.. | select(tag == "!!str")) |= envsubst' "
     if [[ "$(_jq '.hidefiles')" != "null" ]] && [[ -n "$(_jq '.hidefiles')" ]]; then
       echo "hide files = $(_jq '.hidefiles')" >> /etc/samba/smb.conf
     fi
-    if [[ "$(_jq '.recycle')" != "null" ]] && [[ -n "$(_jq '.recycle')" ]]; then
-      echo "vfs objects = recycle" >> /etc/samba/smb.conf
+    if [[ "$(_jq '.recycle')" = "yes" ]]; then
+      echo "vfs objects = fruit streams_xattr recycle" >> /etc/samba/smb.conf
       echo "recycle:repository = .recycle" >> /etc/samba/smb.conf
       echo "recycle:keeptree = yes" >> /etc/samba/smb.conf
       echo "recycle:versions = yes" >> /etc/samba/smb.conf
